@@ -2,7 +2,7 @@ import requests
 from datetime import datetime
 
 # URL for latest news JSON
-JSON_URL = "https://www.jugantor.com/ajax/load/latestnews/10/0/0"
+JSON_URL = "https://www.jugantor.com/ajax/load/latestnews/30/0/0"
 OUTPUT_FILE = "rss.xml"
 
 def fetch_latest_news(url):
