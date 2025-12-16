@@ -14,11 +14,6 @@ jobs:
         image: ghcr.io/flaresolverr/flaresolverr:latest
         ports:
           - 8191:8191
-        options: >-
-          --health-cmd="curl -f http://localhost:8191/v1 || exit 1"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
 
     steps:
       - name: Checkout repository
@@ -41,6 +36,6 @@ jobs:
       - name: Commit and push changes
         uses: EndBug/add-and-commit@v7
         with:
-          author_name: 'GitHub Actions'
-          author_email: 'actions@github.com'
-          message: 'Update Jugantor RSS feed'
+          author_name: GitHub Actions
+          author_email: actions@github.com
+          message: Update Jugantor RSS feed
