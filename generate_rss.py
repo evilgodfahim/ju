@@ -74,9 +74,29 @@ def fetch_latest_news_via_flaresolverr(target_url):
             print(f"JSON decode error: {e}")
             print(f"Response preview (first 500 chars): {str(body)[:500]}")
             
-            # Check if response is HTML (might indicate Cloudflare challenge failed)
+            # Check if response is HTML wrapping JSON (common with browser responses)
             if isinstance(body, str) and body.strip().startswith('<'):
-                print("ERROR: Received HTML instead of JSON - Cloudflare bypass may have failed")
+                print("Detected HTML wrapper - attempting to extract JSON from <pre> tags")
+                
+                # Extract content between <pre> and </pre> tags
+                import re
+                pre_match = re.search(r'<pre[^>]*>(.*?)</pre>', body, re.DOTALL)
+                
+                if pre_match:
+                    json_content = pre_match.group(1).strip()
+                    print(f"Extracted {len(json_content)} chars from <pre> tag")
+                    
+                    try:
+                        parsed = json.loads(json_content)
+                        print(f"Successfully parsed extracted JSON with {len(parsed) if isinstance(parsed, list) else 'unknown'} items")
+                        return parsed
+                    except json.JSONDecodeError as e2:
+                        print(f"Failed to parse extracted content: {e2}")
+                        print(f"Extracted content preview: {json_content[:500]}")
+                        raise ValueError(f"Extracted content is not valid JSON: {e2}")
+                else:
+                    print("ERROR: Could not find <pre> tags in HTML response")
+                    raise ValueError("JSON wrapped in HTML but no <pre> tags found")
             
             raise ValueError(f"Response is not valid JSON: {e}")
 
