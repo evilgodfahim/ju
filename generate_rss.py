@@ -24,6 +24,7 @@ def fetch_latest_news_via_flaresolverr(target_url):
     }
 
     try:
+        print(f"Sending request to FlareSolverr for: {target_url}")
         response = requests.post(
             FLARESOLVERR_URL,
             json=payload,
@@ -32,45 +33,84 @@ def fetch_latest_news_via_flaresolverr(target_url):
         response.raise_for_status()
 
         data = response.json()
+        print(f"FlareSolverr status: {data.get('status')}")
 
         if data.get("status") != "ok":
-            raise RuntimeError(f"FlareSolverr failed: {data.get('message', 'Unknown error')}")
+            error_msg = data.get('message', 'Unknown error')
+            print(f"FlareSolverr error: {error_msg}")
+            raise RuntimeError(f"FlareSolverr failed: {error_msg}")
 
-        # FlareSolverr returns the HTML response body
-        # For JSON endpoints, the body should contain the raw JSON text
-        body = data["solution"]["response"]
+        # Access the correct response body field
+        # FlareSolverr v3+ uses different structure
+        solution = data.get("solution", {})
         
-        if not body or not body.strip():
-            raise ValueError("Empty response body from FlareSolverr")
+        # Try different possible response fields
+        body = None
+        if "response" in solution:
+            body = solution["response"]
+        elif "body" in solution:
+            body = solution["body"]
+        elif "html" in solution:
+            body = solution["html"]
+        
+        if body is None:
+            print(f"Available solution keys: {solution.keys()}")
+            print(f"Full response structure: {json.dumps(data, indent=2)[:1000]}")
+            raise ValueError("Could not find response body in FlareSolverr response")
+        
+        print(f"Response body type: {type(body)}")
+        print(f"Response body length: {len(body) if body else 0}")
+        
+        if not body or not str(body).strip():
+            print("WARNING: Empty response body from FlareSolverr")
+            return []
         
         # Try to parse as JSON
         try:
-            return json.loads(body)
+            parsed = json.loads(body)
+            print(f"Successfully parsed JSON with {len(parsed) if isinstance(parsed, list) else 'unknown'} items")
+            return parsed
         except json.JSONDecodeError as e:
-            # If it fails, print debug info
-            print(f"Failed to parse JSON. Response preview: {body[:500]}")
-            print(f"JSON Error: {e}")
-            raise
+            print(f"JSON decode error: {e}")
+            print(f"Response preview (first 500 chars): {str(body)[:500]}")
+            
+            # Check if response is HTML (might indicate Cloudflare challenge failed)
+            if isinstance(body, str) and body.strip().startswith('<'):
+                print("ERROR: Received HTML instead of JSON - Cloudflare bypass may have failed")
+            
+            raise ValueError(f"Response is not valid JSON: {e}")
 
+    except requests.exceptions.ConnectionError:
+        print("ERROR: Cannot connect to FlareSolverr at http://localhost:8191")
+        print("Make sure FlareSolverr service is running")
+        raise
+    except requests.exceptions.Timeout:
+        print("ERROR: Request to FlareSolverr timed out")
+        raise
     except requests.exceptions.RequestException as e:
         print(f"Request error: {e}")
         raise
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        print(f"Unexpected error: {type(e).__name__}: {e}")
         raise
 
 
 def convert_to_rss(items):
     """Convert news items to RSS format"""
     if not items:
+        print("WARNING: No items to convert to RSS")
         return ""
     
     rss_items = ""
 
-    for item in items:
+    for i, item in enumerate(items):
         title = item.get("headline", "")
         link = item.get("url", "")
         description = item.get("description", "")
+
+        if not title and not link:
+            print(f"Skipping item {i}: missing title and link")
+            continue
 
         # Proper RFC 822 datetime in UTC
         pub_date = datetime.now(timezone.utc).strftime(
@@ -120,19 +160,30 @@ def save_rss(file_name, content):
 
 def main():
     try:
-        print(f"Fetching news from {JSON_URL}")
+        print("=" * 60)
+        print("Starting RSS feed generation")
+        print("=" * 60)
+        
         news_items = fetch_latest_news_via_flaresolverr(JSON_URL)
         
-        print(f"Retrieved {len(news_items) if isinstance(news_items, list) else 0} news items")
+        item_count = len(news_items) if isinstance(news_items, list) else 0
+        print(f"Retrieved {item_count} news items")
+        
+        if item_count == 0:
+            print("WARNING: No news items retrieved, generating empty RSS feed")
         
         items_xml = convert_to_rss(news_items)
         rss_feed = build_rss(items_xml)
         save_rss(OUTPUT_FILE, rss_feed)
         
+        print("=" * 60)
         print("RSS generation completed successfully")
+        print("=" * 60)
         
     except Exception as e:
-        print(f"Error generating RSS feed: {e}")
+        print("=" * 60)
+        print(f"FATAL ERROR: {type(e).__name__}: {e}")
+        print("=" * 60)
         raise
 
 
